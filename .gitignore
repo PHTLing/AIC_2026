@@ -1,0 +1,15 @@
+temp_processing_videos/
+debug_outputs/
+debug_pyscenedetect/
+metadata/
+TransNetV2/
+
+videos/
+test/
+
+venv/
+__pycache__/
+*.py[cod]
+
+reviewer.py
+tune_th

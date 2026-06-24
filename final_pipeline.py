@@ -162,8 +162,6 @@ def process_all_videos():
         video_id = os.path.splitext(video_file)[0]
         
         folder_chua_vid = os.path.basename(os.path.dirname(drive_video_path))
-        if folder_chua_vid == os.path.basename(DRIVE_INPUT_FOLDER):
-            folder_chua_vid = "unknown_batch"
             
         print(f"\n[{folder_chua_vid} / {video_file}] Đang bắt đầu xử lý...")
         local_video_path = os.path.join(LOCAL_TEMP_FOLDER, video_file)

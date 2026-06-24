@@ -136,11 +136,9 @@ def group_shots_to_segments(shots, threshold=0.75):
     # Định dạng lại dữ liệu Segment theo Schema mới
     for seg in segments:
         seg["segment_caption"] = " ".join([s["caption"] for s in seg["shots"]])
-        seg["object"] = []
-        seg["ocr"] = []
         seg["speech"] = []
-        seg["keyframe"] = []
-        # Xóa mảng "shots" để JSON gọn gàng, tập trung hoàn toàn vào Segment
+        seg["keyframe"] = {}
+    
         seg.pop("shots", None) 
             
     return segments
@@ -232,8 +230,11 @@ def process_all_videos():
                     
                     cv2.imwrite(img_path, frame)
                     
-                    # Chỉ lưu đúng TÊN FILE vào list theo format bạn yêu cầu
-                    info['seg_ref']['keyframe'].append(img_name)
+                    # Chỉ lưu thông tin về keyframe trong metadata
+                    info['seg_ref']['keyframe'][img_name] = {
+                        "object": [],
+                        "ocr": []
+                    }
                     target_idx += 1
                     
                 current_frame += 1

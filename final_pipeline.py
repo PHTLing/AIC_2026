@@ -27,7 +27,7 @@ dynamic_utils.get_imports = custom_get_imports
 # --- CẤU HÌNH ĐƯỜNG DẪN DỮ LIỆU ---
 BASE_WORKSPACE = r"G:\.shortcut-targets-by-id\11I5_AMfAufb6crT2hzGrLEI3tMsTsKjX\AIC2026"
 
-DRIVE_INPUT_FOLDER = os.path.join(BASE_WORKSPACE, "OldData\L28")
+DRIVE_INPUT_FOLDER = os.path.join(BASE_WORKSPACE, "OldData\L28") # Trực tiếp folder chứa video
 DRIVE_OUTPUT_FOLDER = os.path.join(BASE_WORKSPACE, "metadata")
 DRIVE_KEYFRAMES_META_FOLDER = os.path.join(BASE_WORKSPACE, "keyframes_meta")
 LOCAL_TEMP_FOLDER = "temp_processing_videos"
@@ -245,12 +245,14 @@ def process_all_videos():
             
             # --- CẬP NHẬT CẤU TRÚC JSON GỐC (ROOT) TẠI ĐÂY ---
             # Sử dụng thư mục chuẩn hóa , ở đây lưu relative path
-            video_rel_path = os.path.join("videos", folder_chua_vid, video_file).replace("\\", "/")
+            video_rel_path = os.path.join(folder_chua_vid, video_file).replace("\\", "/")
             
             final_data = {
                 "video_id": video_id,
                 "type": "video",
                 "video_path": video_rel_path,
+                "keyframes_folder_path": f"{folder_chua_vid}/{video_id}_keyframes", 
+                "metadata_path": f"{folder_chua_vid}/{video_id}.json",
                 "fps": round(fps, 2),
                 "segments": segments_data
             }

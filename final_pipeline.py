@@ -25,6 +25,7 @@ def custom_get_imports(filename):
 dynamic_utils.get_imports = custom_get_imports
 
 # --- CẤU HÌNH ĐƯỜNG DẪN DỮ LIỆU ---
+HISTOGRAM_THRESHOLD = 0.90
 BASE_WORKSPACE = r"G:\.shortcut-targets-by-id\11I5_AMfAufb6crT2hzGrLEI3tMsTsKjX\AIC2026"
 
 DRIVE_INPUT_FOLDER = os.path.join(BASE_WORKSPACE, "OldData\L28") # Trực tiếp folder chứa video
@@ -36,6 +37,7 @@ os.makedirs(DRIVE_INPUT_FOLDER, exist_ok=True)
 os.makedirs(DRIVE_OUTPUT_FOLDER, exist_ok=True)
 os.makedirs(DRIVE_KEYFRAMES_META_FOLDER, exist_ok=True)
 os.makedirs(LOCAL_TEMP_FOLDER, exist_ok=True)
+
 
 # Thêm TransNetV2 vào đường dẫn
 sys.path.append(os.path.join(os.getcwd(), 'TransNetV2', 'inference'))
@@ -143,6 +145,23 @@ def group_shots_to_segments(shots, threshold=0.75):
             
     return segments
 
+def save_tournament_winner(winner_data, folder_vid, video_id, seg_id, kf_meta_dir, seg_ref):
+    """Hàm lưu frame xuất sắc nhất vào ổ cứng và update JSON"""
+    frame_idx, frame_img = winner_data[0], winner_data[1]
+    seg_id_clean = seg_id.replace("_", "")
+    
+    # Format chuẩn AIC: <vid>_<seg>_<frameid>.jpg
+    img_name = f"{video_id}_{seg_id_clean}_{frame_idx:05d}.jpg"
+    img_path = os.path.join(kf_meta_dir, img_name)
+    
+    cv2.imwrite(img_path, frame_img)
+    
+    # SỬA Ở ĐÂY: Gán tên file làm Key và khởi tạo object/ocr rỗng
+    seg_ref["keyframe"][img_name] = {
+        "object": [],
+        "ocr": []
+    }
+
 # --- LUỒNG CHẠY CHÍNH ---
 def process_all_videos():
     video_paths = []
@@ -190,7 +209,11 @@ def process_all_videos():
             print("  -> Gom cụm segment (Threshold = 0.4)...")
             segments_data = group_shots_to_segments(shots_data, threshold=0.4)
             
-            print("  -> 📸 Đang trích xuất Keyframes từ Segments...")
+            print("  -> 📸 Đang trích xuất Keyframe (Lấy mẫu toán học -> Lọc Histogram)...")
+            
+            # =================================================================
+            # BƯỚC 1: LẬP DANH SÁCH FRAME ỨNG CỬ VIÊN (THEO ĐÚNG QUY TẮC CŨ)
+            # =================================================================
             target_frames_info = []
             
             for seg in segments_data:
@@ -200,6 +223,7 @@ def process_all_videos():
                 
                 if total_frames <= 0: continue
                 
+                # Áp dụng công thức gốc: Tối thiểu 3 frame, max cách 20 frame
                 num_frames = max(3, math.ceil(total_frames / 20.0) + 1)
                 step = total_frames // (num_frames - 1) if num_frames > 1 else 0
                 
@@ -211,35 +235,78 @@ def process_all_videos():
                         'seg_ref': seg
                     })
                     
+            # Sắp xếp mảng theo thứ tự thời gian để tiện cho việc đọc tuần tự 1 lần
             target_frames_info.sort(key=lambda x: x['frame_idx'])
             
+            # =================================================================
+            # BƯỚC 2: ĐỌC VIDEO VÀ ÁP DỤNG BỘ LỌC KÉP ĐỂ LOẠI BỎ ẢNH TRÙNG
+            # =================================================================
             cap = cv2.VideoCapture(local_video_path)
             current_frame = 0
             target_idx = 0
             total_targets = len(target_frames_info)
             
+            basket = []
+            prev_hist = None
+            current_seg_id = None
+            
             while cap.isOpened() and target_idx < total_targets:
                 ret, frame = cap.read()
                 if not ret: break
                 
+                # Chỉ xử lý khi video chạy đến đúng frame nằm trong danh sách ứng cử viên
                 while target_idx < total_targets and current_frame == target_frames_info[target_idx]['frame_idx']:
                     info = target_frames_info[target_idx]
-                    seg_id_clean = info['seg_id'].replace("_", "")
-                    img_name = f"{video_id}_{seg_id_clean}_{current_frame:05d}.jpg"
-                    img_path = os.path.join(kf_meta_dir, img_name)
+                    seg_id = info['seg_id']
+                    seg_ref = info['seg_ref']
                     
-                    cv2.imwrite(img_path, frame)
+                    # 1. Đo lường đặc trưng
+                    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                    hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+                    cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
                     
-                    # Chỉ lưu thông tin về keyframe trong metadata
-                    info['seg_ref']['keyframe'][img_name] = {
-                        "object": [],
-                        "ocr": []
-                    }
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    lap_score = cv2.Laplacian(gray, cv2.CV_64F).var()
+                    
+                    # 2. Xả giỏ nếu thuật toán đã bước sang Segment mới
+                    if current_seg_id != seg_id:
+                        if basket:
+                            winner = max(basket, key=lambda x: x[2])
+                            save_tournament_winner(winner, folder_chua_vid, video_id, current_seg_id, kf_meta_dir, winner[3])
+                            basket = []
+                        current_seg_id = seg_id
+                        prev_hist = None
+                        
+                    # 3. Logic Lọc: Gom giỏ chờ & Loại trùng lặp
+                    if not basket:
+                        basket.append((current_frame, frame.copy(), lap_score, seg_ref))
+                        prev_hist = hist
+                    else:
+                        sim = cv2.compareHist(prev_hist, hist, cv2.HISTCMP_CORREL)
+                        if sim >= HISTOGRAM_THRESHOLD:
+                            # Histogram giống nhau -> Thuộc cùng bối cảnh tĩnh -> Gom vào giỏ
+                            basket.append((current_frame, frame.copy(), lap_score, seg_ref))
+                            prev_hist = hist
+                        else:
+                            # Histogram thay đổi -> Có hành động mới -> Chốt giỏ cũ, chọn 1 tấm nét nhất
+                            winner = max(basket, key=lambda x: x[2])
+                            save_tournament_winner(winner, folder_chua_vid, video_id, current_seg_id, kf_meta_dir, winner[3])
+                            
+                            # Cho frame hiện tại vào giỏ mới
+                            basket = [(current_frame, frame.copy(), lap_score, seg_ref)]
+                            prev_hist = hist
+                            
                     target_idx += 1
-                    
+                
                 current_frame += 1
+                
+            # Xả giỏ cuối cùng khi video kết thúc
+            if basket:
+                winner = max(basket, key=lambda x: x[2])
+                save_tournament_winner(winner, folder_chua_vid, video_id, current_seg_id, kf_meta_dir, winner[3])
+                
             cap.release()
-            print(f"     ✅ Đã cắt và lưu thành công {target_idx} frames hoàn hảo!")
+            print(f"     ✅ Đã hoàn tất! Ứng cử viên được lấy theo quy tắc và đã qua bộ lọc trùng lặp.")
             
             print("  -> Lưu kết quả JSON Metadata...")
             

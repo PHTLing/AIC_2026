@@ -5,7 +5,9 @@ metadata/
 TransNetV2/
 
 videos/
-test/
+test*/
+tune_*/
+tune*.py
 
 venv/
 __pycache__/

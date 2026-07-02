@@ -9,7 +9,7 @@ git clone https://github.com/soCzech/TransNetV2.git
     "video_id": "L28_V001",
     "type": "video",
     "video_path": "L28/L28_V001.mp4",
-    "keyframes_folder_kpath": f"L28/L28_V001_keyframes", # Bổ sung dòng này
+    "keyframes_folder_kpath": f"L28/L28_V001_keyframes",
     "metadata_path": f"L28/L28_V001.json",
     "fps": 25.0,
     "segments": [
